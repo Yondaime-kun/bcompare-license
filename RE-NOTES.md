@@ -290,3 +290,21 @@ reads before forcing its condition.**
 To go further, either a key the parser accepts is needed, or the three reader
 functions above have to be satisfied as well. That is more than a byte swap and
 was not attempted.
+
+
+---
+
+## A search that did not work, recorded so it is not repeated
+
+Finding who populates the licence object's display fields seemed like the next
+step, so every `MOV` and `LEA` whose destination operand carried one of the four
+offsets (`0x1c8`, `0x100`, `0xf8`, `0xf0`) was collected and grouped by function.
+It returned 502 functions, and the results are useless: the overwhelming majority
+are `lea rsp,[rsp+0x100]` and `mov qword ptr [rsp+0x100],...`, which are stack
+frame accesses that happen to share the displacement. The offset alone does not
+identify a field access.
+
+A register-aware check is needed — the base register has to be the one holding the
+licence object, not `rsp` — or better, the object has to be identified by its type
+first and the accesses found through the type. The blunt version wastes a full
+analysis pass.
