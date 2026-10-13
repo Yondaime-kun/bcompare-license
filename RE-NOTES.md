@@ -308,3 +308,39 @@ A register-aware check is needed — the base register has to be the one holding
 licence object, not `rsp` — or better, the object has to be identified by its type
 first and the accesses found through the type. The blunt version wastes a full
 analysis pass.
+
+
+---
+
+## Why "just fill the fields in the constructor" does not work either
+
+The obvious next move after finding that the constructor zeroes `+0x1c8`, `+0x100`,
+`+0xf8` is to patch those stores so they point at strings that already exist in the
+image instead of null. That does not work, and the reason is worth recording.
+
+Scanning `.text` for `mov qword [reg+disp32], imm32` with those displacements finds
+45 instructions, and they belong to many unrelated functions:
+
+```
+0xd7ce01  [obj+0x100] = 0          (the licence object constructor)
+0xd7cf60  [obj+0xf0]  = 0
+0xd7cf6b  [obj+0xf8]  = 0
+0x101b686 [obj+0x1c8] = 0          different function
+0x102a490 [obj+0x1c8] = 0          different function
+0x10c6701 [obj+0x100] = 0xffffffff another field entirely
+0x1373111 [obj+0x1c8] = 0          different function
+... 45 in total
+```
+
+`+0x100` alone appears in a dozen different functions, on different object types.
+The displacement is not an identity: a store at `+0x100` is only the licence field
+if the base register holds the licence object, and nothing in the instruction says
+so. Patching by displacement would write into whichever other object shares the
+offset — which is exactly the mistake made three times earlier in this analysis
+when `+0x620`, `+0x640` and `+0x641` were each read as the licence state without
+checking who else writes them.
+
+Doing it correctly needs the object type, not the offset: identify the licence
+object's type in the tool, then follow the typed accesses to find the stores that
+belong to it. That is a different piece of work from reading a stripped binary by
+string reference and was not attempted here.
