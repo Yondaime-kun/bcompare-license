@@ -109,7 +109,93 @@ is inside the function rather than at a call site, one six-byte change covers al
 fifteen callers.
 
 So the patch is applied to the right place. The app's failure under it is not a
-misplaced write; it is the null read described above.
+misplaced write — but it is not the null read first supposed either; see the test
+below that ruled that out.
+
+## Why it does not work, measured
+
+The app was run two ways from a cleared config directory, under a real X server,
+and compared. The original builds its window and writes its state files; the
+patched build does neither, and it does not crash either — it stays alive and never
+initialises.
+
+```
+                        original                patched
+window                  "Home - Beyond Compare" none (only a Qt owner window)
+                       1105x808
+screenshot              88,715 bytes            353 bytes (blank)
+exit after cap          124 (still running)     124 (still running)
+~/.config/bcompare5/    IsPro, registry.dat,    directory is empty
+                        BCState.xml, menu.ini
+```
+
+The patched build runs, stays running, and produces nothing: no window, no config
+directory. It is not a crash, so the cause is not a fault in the patched
+instruction itself.
+
+### A first explanation, and the test that disproved it
+
+The registered branch reads three pointers out of the licence object
+(`+0x1c8`, `+0x100`, `+0xf8`) and the object's constructor zeroes all of them, so
+the obvious explanation is that forcing the state sends the branch into null reads.
+That was tested rather than assumed. Each of the three readers was rewritten to
+point at the `<unregistered>` string that already exists in the image, as a
+`lea rsi,[rip+disp32]` in place of `mov rsi,[rax+disp]` — seven bytes for seven
+bytes, so nothing shifts:
+
+```
+00e84ec0   48 8b b0 c8 01 00 00  ->  48 8d 35 ...   ("Licensed to:" value)
+00e871b0   48 8b b0 00 01 00 00  ->  48 8d 35 ...   ("License type:" value)
+00e80a90   48 8b b0 f8 00 00 00  ->  48 8d 35 ...   (platform flags)
+```
+
+The result is unchanged: no window, empty config directory, same blank screenshot.
+**That disproves the null-read explanation.** Whatever stops the app happens before
+those readers are reached, so the failure is earlier in the licence path than the
+branch that fills the display fields.
+
+So the position is: the decision point is the right one, the patch is applied
+exactly, and the app still does not reach the registered UI — but the reason is not
+the one first supposed, and it is not yet known. What is known is that it is not a
+null read of the three display fields, and not a misplaced write.
+
+## Address mapping, confirmed
+
+The binary has four `PT_LOAD` segments and, for the executable one,
+`vaddr == offset` (`0xcb8000` for both), so the file offset of any address is the
+address itself. The analysis tool used here loads images with a `0x100000`
+rebase, so a tool address of `0x00e870f0` is VM address `0xd870f0`, which is file
+offset `0xd870f0`.
+
+That was checked rather than assumed, by scanning `.text` for every `call rel32`
+whose target resolves to `0xd870f0`. Fifteen call sites:
+
+```
+0xe89dd5  the standard/pro/trial branch
+0xe8a51a
+0xe8acf6
+0xe8ad9e
+0xe8b3c0  the "== 3" branch that fills "Licensed to:"
+0xe8b7d9  the second "== 3" branch
+0xe8b803
+0xec2f84
+0xee0244
+0xf1b29a
+0xf43915
+0x1018474
+0x1018523
+0x1019caa
+0x1019d34
+```
+
+Three of them are the sites named above, at exactly those offsets once the rebase
+is undone. No `lea` takes its address, so it is only ever called. Because the patch
+is inside the function rather than at a call site, one six-byte change covers all
+fifteen callers.
+
+So the patch is applied to the right place. The app's failure under it is not a
+misplaced write — but it is not the null read first supposed either; see the test
+below that ruled that out.
 
 ## Why it does not work, measured
 
@@ -142,22 +228,16 @@ standard branches synthesise their fields; the registered branch reads them.
 Either a key that the parser accepts, so `+0x620` reaches 3 on its own, or a patch
 that also supplies the fields the registered branch reads.
 
-The second is more work than a byte swap, and the constructor shows why. The object
-that holds the licence state initialises all four display fields to zero:
+Supply the display fields. That was attempted — the three readers were redirected at
+the `<unregistered>` string, seven bytes for seven bytes — and it changed nothing,
+which is how the null-read explanation above was ruled out. So this is not the
+remaining obstacle either.
 
-```c
-FUN_00e7cb10:                      /* object constructor */
-    *(undefined8 *)(obj + 0x1c8) = 0;   /* "Licensed to:" value  */
-    *(undefined8 *)(obj + 0x100) = 0;   /* "License type:" value */
-    *(undefined8 *)(obj + 0xf8)  = 0;   /* platform flags        */
-    *(undefined8 *)(obj + 0xf0)  = 0;   /* string searched for \n */
-```
-
-Nothing else in the binary writes them along any path reachable without an accepted
-key, so the registered branch has three nulls to dereference. Supplying the fields
-means either reconstructing them the way a valid key would, or redirecting the
-readers (`00e84ec0`, `00e871b0`, `00e80a90`) at strings that already exist in the
-image. The second is a code patch rather than a byte swap and was not attempted.
+The likely direction is earlier in the licence path: the state byte is not merely
+compared, it is set by a load along the file-read path, and forcing it to its
+registered value without that path having completed may leave the object in a state
+the rest of start-up does not expect. Finding what actually stops the run means
+tracing the start-up sequence rather than reading more of the licence functions.
 
 To test that, the fields are worth identifying first: `00e84ec0`, `00e871b0` and
 `00e80a90` are the readers, and `DAT_02ce1320` / `DAT_02ce1370` / `DAT_02ce1360`
