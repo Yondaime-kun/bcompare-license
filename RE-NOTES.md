@@ -344,3 +344,45 @@ Doing it correctly needs the object type, not the offset: identify the licence
 object's type in the tool, then follow the typed accesses to find the stores that
 belong to it. That is a different piece of work from reading a stripped binary by
 string reference and was not attempted here.
+
+
+---
+
+## The displacement filter failed, with three concrete counterexamples
+
+The previous note argued that a displacement is not an identity; the attempt to use
+one anyway to find the code that populates the licence fields produced the proof.
+
+Filtering `.text` for stores (`mov [reg+disp32], reg`) to `0x1c8`, `0x100`, `0xf8`
+or `0xf0` gives 288 instructions. Narrowing to functions that touch all four of
+those displacements, on the theory that a complete object population touches them
+together, gives these:
+
+```
+0x1319994   touches 0x100 0x1c8 0xf0 0xf8
+0x1320710   touches 0x100 0x1c8 0xf0 0xf8
+0x1321550   touches 0x100 0x1c8 0xf0 0xf8
+0x1774bd4   touches 0x100 0x1c8 0xf0 0xf8
+```
+
+Two were decompiled and neither is the licence object:
+
+- **`0x1421550`** switches on a fixed-argument index (`-4, -3, -2, -1, 1, 2, 4`),
+  writes small type codes (`0x7c4`, `0x7d4`) and raises
+  `Argument out of range`. It is an RTL helper, and those displacements are locals
+  in its own frame.
+- **`0x1874bd0`** is **SHA-1**. It reads and mixes `+0xe8`, `+0xf0`, `+0xf8`,
+  `+0x100`, `+0x108` with the `~a & b ^ c` pattern and rotates a
+  `+0x1c8` word — the hash state and block schedule of a SHA-1 implementation.
+
+So the four displacements are shared by at least three unrelated things: the
+licence object, this RTL helper, and SHA-1's state. Displacement is not merely a
+weak signal; here it is a wrong one, and it produced the same class of mistake as
+reading `+0x620`/`+0x640`/`+0x641` as the licence state earlier.
+
+**The conclusion this analysis reached repeatedly, now with evidence: field offsets
+do not identify fields in a stripped binary. An object's accesses have to be found
+through its type — identify the object first, then follow the typed accesses — and
+that is a different piece of work from reading the licence path by string
+reference. It was not attempted, and the patch in this repository does not depend
+on it.**
