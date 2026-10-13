@@ -133,6 +133,118 @@ The patched build runs, stays running, and produces nothing: no window, no confi
 directory. It is not a crash, so the cause is not a fault in the patched
 instruction itself.
 
+### What actually happens: the patched build spins
+
+Two explanations were tested and both were wrong; the measurements below replaced
+them. Running each build under a real X server and reading its own process state:
+
+```
+                        original                    patched
+process state           S (sleeping)                R (running)
+threads                 7                           2
+open files (non-lib)    BCLOCK, BC_IPC_SERVER       none
+~/.config/bcompare5/    IsPro, registry.dat,        directory is empty
+                        BCState.xml, menu.ini
+window                  "Home - Beyond Compare"     none
+                        1105x808
+```
+
+The original parks in `S` with seven threads, having taken its lock and started its
+IPC endpoint. The patched build sits in `R` with two threads, has opened nothing,
+and writes nothing. That is not a crash and not a wait: it is a process burning CPU
+before it has done any setup. (Measuring it further was cut short — the host ran out
+of memory while the spinning process was alive, which is consistent with the build
+looping rather than idling.)
+
+### Two explanations tested and discarded
+
+**Null reads in the display branch.** The registered branch reads three pointers
+out of the licence object (`+0x1c8`, `+0x100`, `+0xf8`) and the constructor zeroes
+all of them, so the obvious explanation was null reads. Each reader was rewritten to
+point at the `<unregistered>` string already in the image, as `lea rsi,[rip+disp32]`
+in place of `mov rsi,[rax+disp]` — seven bytes for seven bytes, so nothing shifts:
+
+```
+00e84ec0   48 8b b0 c8 01 00 00  ->  48 8d 35 ...   ("Licensed to:" value)
+00e871b0   48 8b b0 00 01 00 00  ->  48 8d 35 ...   ("License type:" value)
+00e80a90   48 8b b0 f8 00 00 00  ->  48 8d 35 ...   (platform flags)
+```
+
+Result: unchanged. No window, empty config directory, same `R`/two-thread state. So
+the failure is not those reads.
+
+**A misplaced write.** The patch address was confirmed to be the right one by
+scanning `.text` for every `call rel32` resolving to it: fifteen call sites, three
+of them the branch instructions named above. So the failure is not a wrong address
+either.
+
+**What the isolated test shows.** Applying only the status-store patch (without the
+reader patches) reproduces the state exactly — `R`, two threads, empty config
+directory. So the trigger is the state patch itself: the licence state byte is not
+merely compared, it is *set* along the file-read path, and forcing it to its
+registered value without that path having run leaves start-up in a state where it
+spins instead of initialising. That is the current understanding, and it is where
+the next step starts.
+
+## Address mapping, confirmed
+
+The binary has four `PT_LOAD` segments and, for the executable one,
+`vaddr == offset` (`0xcb8000` for both), so the file offset of any address is the
+address itself. The analysis tool used here loads images with a `0x100000`
+rebase, so a tool address of `0x00e870f0` is VM address `0xd870f0`, which is file
+offset `0xd870f0`.
+
+That was checked rather than assumed, by scanning `.text` for every `call rel32`
+whose target resolves to `0xd870f0`. Fifteen call sites:
+
+```
+0xe89dd5  the standard/pro/trial branch
+0xe8a51a
+0xe8acf6
+0xe8ad9e
+0xe8b3c0  the "== 3" branch that fills "Licensed to:"
+0xe8b7d9  the second "== 3" branch
+0xe8b803
+0xec2f84
+0xee0244
+0xf1b29a
+0xf43915
+0x1018474
+0x1018523
+0x1019caa
+0x1019d34
+```
+
+Three of them are the sites named above, at exactly those offsets once the rebase
+is undone. No `lea` takes its address, so it is only ever called. Because the patch
+is inside the function rather than at a call site, one six-byte change covers all
+fifteen callers.
+
+So the patch is applied to the right place. The app's failure under it is not a
+misplaced write — but it is not the null read first supposed either; see the test
+below that ruled that out.
+
+## Why it does not work, measured
+
+The app was run two ways from a cleared config directory, under a real X server,
+and compared. The original builds its window and writes its state files; the
+patched build does neither, and it does not crash either — it stays alive and never
+initialises.
+
+```
+                        original                patched
+window                  "Home - Beyond Compare" none (only a Qt owner window)
+                       1105x808
+screenshot              88,715 bytes            353 bytes (blank)
+exit after cap          124 (still running)     124 (still running)
+~/.config/bcompare5/    IsPro, registry.dat,    directory is empty
+                        BCState.xml, menu.ini
+```
+
+The patched build runs, stays running, and produces nothing: no window, no config
+directory. It is not a crash, so the cause is not a fault in the patched
+instruction itself.
+
 ### A first explanation, and the test that disproved it
 
 The registered branch reads three pointers out of the licence object

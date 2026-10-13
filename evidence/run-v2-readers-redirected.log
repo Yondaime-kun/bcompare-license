@@ -1,0 +1,24 @@
+label=p3
+binary=<workdir>
+X ready on :N
+BCompare pid=3594932
+RESULT: APP_ALIVE
+rss: VmRSS:	   56696 kB
+--- window tree ---
+
+xwininfo: Window id: 0x21f (the root window) (has no name)
+
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     1 child:
+     0x200004 "Qt Selection Owner for BCompare": ()  3x3+0+0  +0+0
+
+--- screenshot ---
+png: 353 bytes
+--- config files ---
+--- open files of interest ---
+anon_inode:[eventfd]
+<workdir>
+socket:[14555404]
+total 0
+done
