@@ -140,8 +140,24 @@ standard branches synthesise their fields; the registered branch reads them.
 ## What would be needed
 
 Either a key that the parser accepts, so `+0x620` reaches 3 on its own, or a patch
-that also supplies the fields the registered branch reads. The second is more work
-than a byte swap and was not attempted.
+that also supplies the fields the registered branch reads.
+
+The second is more work than a byte swap, and the constructor shows why. The object
+that holds the licence state initialises all four display fields to zero:
+
+```c
+FUN_00e7cb10:                      /* object constructor */
+    *(undefined8 *)(obj + 0x1c8) = 0;   /* "Licensed to:" value  */
+    *(undefined8 *)(obj + 0x100) = 0;   /* "License type:" value */
+    *(undefined8 *)(obj + 0xf8)  = 0;   /* platform flags        */
+    *(undefined8 *)(obj + 0xf0)  = 0;   /* string searched for \n */
+```
+
+Nothing else in the binary writes them along any path reachable without an accepted
+key, so the registered branch has three nulls to dereference. Supplying the fields
+means either reconstructing them the way a valid key would, or redirecting the
+readers (`00e84ec0`, `00e871b0`, `00e80a90`) at strings that already exist in the
+image. The second is a code patch rather than a byte swap and was not attempted.
 
 To test that, the fields are worth identifying first: `00e84ec0`, `00e871b0` and
 `00e80a90` are the readers, and `DAT_02ce1320` / `DAT_02ce1370` / `DAT_02ce1360`
