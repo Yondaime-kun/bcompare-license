@@ -74,6 +74,43 @@ is 44,888,265 bytes). SHA256 before
 `11e18e44332e213e404abf1d49ea869a5edb93df5783d9b1487bbbc2b6a9f567`, after
 `91f2708ef830ab8441af5a4eaf07419121053be00d8f94ba0445b3a90be286bc`.
 
+## Address mapping, confirmed
+
+The binary has four `PT_LOAD` segments and, for the executable one,
+`vaddr == offset` (`0xcb8000` for both), so the file offset of any address is the
+address itself. The analysis tool used here loads images with a `0x100000`
+rebase, so a tool address of `0x00e870f0` is VM address `0xd870f0`, which is file
+offset `0xd870f0`.
+
+That was checked rather than assumed, by scanning `.text` for every `call rel32`
+whose target resolves to `0xd870f0`. Fifteen call sites:
+
+```
+0xe89dd5  the standard/pro/trial branch
+0xe8a51a
+0xe8acf6
+0xe8ad9e
+0xe8b3c0  the "== 3" branch that fills "Licensed to:"
+0xe8b7d9  the second "== 3" branch
+0xe8b803
+0xec2f84
+0xee0244
+0xf1b29a
+0xf43915
+0x1018474
+0x1018523
+0x1019caa
+0x1019d34
+```
+
+Three of them are the sites named above, at exactly those offsets once the rebase
+is undone. No `lea` takes its address, so it is only ever called. Because the patch
+is inside the function rather than at a call site, one six-byte change covers all
+fifteen callers.
+
+So the patch is applied to the right place. The app's failure under it is not a
+misplaced write; it is the null read described above.
+
 ## Why it does not work, measured
 
 The app was run two ways from a cleared config directory, under a real X server,
