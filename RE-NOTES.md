@@ -386,3 +386,32 @@ through its type — identify the object first, then follow the typed accesses �
 that is a different piece of work from reading the licence path by string
 reference. It was not attempted, and the patch in this repository does not depend
 on it.**
+
+
+---
+
+## The obfuscated strings are a bundled library's, not Beyond Compare's
+
+`0x1dd7ea0` holds `usbut!mmbiD!NTU`, and a call nearby loads it as a string
+argument, which makes it look like license material. It is not. The scheme is
+simply: subtract one from every byte, then reverse the string.
+
+```
+usbut!mmbiD!NTU          -> trats llahC MST          -> "TSM Chall start"
+9::2!uihjszqpd!doJ!NTU   -> 8991 thgirypoc cnI MST   -> "TSM Inc copyright 1998"
+```
+
+And TSM is a bundled component, not this application: the image also carries
+`TSMWordSysChar`, `TSMWParseItem`, `TSMWSysToken`, `TSMW_FixedMemoryStream`,
+`TSMW_ILockBytes` — the naming of a third-party text-services library. Thirty-five
+`TSM` strings are present.
+
+So an obfuscated string sitting next to license code is not evidence that it belongs
+to the license path; strings arrive in the image with whatever libraries the vendor
+linked. This is the same lesson as the displacement filter and the Facebook
+`has_trial` strings in the Android work: **the thing has to be attributed to its
+owner before it is read as meaningful.** The check that caught this one was reading
+what else is in the image under the same prefix, which took one command.
+
+The scheme itself is worth keeping: a byte-wise decrement plus a string reversal is
+cheap to undo and easy to miss when reading an image by eye.
