@@ -242,3 +242,51 @@ holds a name instead of that marker. If the app still reports `<unregistered>`,
 this reading is wrong and the search goes back one level, to whoever loads the
 `+0x620` field into the licence object.
 
+
+---
+
+## The measurement that disproved the patch
+
+The app was run twice from a cleared config directory under a real X server, once
+per binary, with the window tree, a screenshot and the config directory captured
+while it was alive. Comparison:
+
+```
+                        original                          patched
+window                  "Home - Beyond Compare" 1105x808   none
+                        (plus a 1x1 helper window)          (only "Qt Selection Owner")
+screenshot              88,715 bytes                        353 bytes
+~/.config/bcompare5/    IsPro=0x01, registry.dat (48 B),    directory empty
+                        BCState.xml (325 B), menu.ini
+```
+
+The original produces a working window and writes its state; the patched build
+produces neither, and exits without ever mapping a window.
+
+So the reading of `+0x620` as the licence state may still be right — the three call
+sites are consistent with it and the `<unregistered>` string sits in the `else` of
+the `== 3` test — but forcing it to 3 is not sufficient. The registered branch
+reads its display fields out of the licence object:
+
+```
+00f8b350:
+    if (00e870f0(licence) == 3) {
+        00e84ec0(licence, &v);  DAT_02ce1320 = v;    /* "Licensed to:"   */
+        00e871b0(licence, &v);  DAT_02ce1370 = v;    /* "License type:"  */
+        00e80a90(licence, &f);                        /* platform flags   */
+        ...
+    }
+```
+
+With no key loaded those reads have nothing to return, and the run ends before the
+UI is built. The trial and standard branches synthesise their values instead, which
+is why forcing the state changes the failure mode rather than producing a licensed
+app.
+
+**The general lesson, worth more than this patch: forcing a decision point without
+supplying the data that branch consumes breaks the program. Check what a branch
+reads before forcing its condition.**
+
+To go further, either a key the parser accepts is needed, or the three reader
+functions above have to be satisfied as well. That is more than a byte swap and
+was not attempted.

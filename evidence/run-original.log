@@ -1,0 +1,31 @@
+label=orig
+binary=<workdir>
+X ready on :N
+BCompare pid=3585067
+RESULT: APP_ALIVE
+rss: VmRSS:	  108476 kB
+--- window tree ---
+
+xwininfo: Window id: 0x21f (the root window) (has no name)
+
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     3 children:
+     0x20000d "Home - Beyond Compare": ("BCompare" "BCompare")  1105x808+147+96  +147+96
+     0x200008 "BCompare": ()  1x1+0+0  +0+0
+     0x200004 "Qt Selection Owner for BCompare": ()  3x3+0+0  +0+0
+
+--- screenshot ---
+png: 88715 bytes
+--- config files ---
+<workdir>
+--- open files of interest ---
+anon_inode:[eventfd]
+<workdir>
+<workdir>
+<workdir>
+socket:[14487947]
+socket:[14487970]
+socket:[14488817]
+total 0
+done
