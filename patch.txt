@@ -1,0 +1,15 @@
+# Beyond Compare 5.2.6.32774 — licence patch
+#
+# 6 bytes at file offset 0xd87101.
+# Replaces the licence-state field load with a constant 3 (registered).
+#
+# Apply with:
+#   python3 apply.py <path-to-BCompare>
+#
+# offset  original  patched
+0xd87101  0x8a      0xb0
+0xd87102  0x80      0x03
+0xd87103  0x20      0x90
+0xd87104  0x06      0x90
+0xd87105  0x00      0x90
+0xd87106  0x00      0x90

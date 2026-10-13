@@ -1,0 +1,5 @@
+# the shipped binary is never committed; apply.py works on a copy the user has
+BCompare
+BCompare.orig
+*.deb
+*.orig
